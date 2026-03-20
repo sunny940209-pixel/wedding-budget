@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>결혼 준비 비용 정산</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FAF8F5; --surface: #FFFFFF; --surface2: #F5F2ED;
+    --border: #E8E3DC; --border2: #D6CFC5;
+    --text: #1A1714; --text2: #6B6460; --text3: #A09890;
+    --accent: #8B6F5E;
+    --sw: #3D5A80; --sw-bg: #EEF3F9; --sw-border: #C5D5E8;
+    --sm: #8B4A3A; --sm-bg: #F9F0EC; --sm-border: #E8C5BB;
+    --done: #4A7C59; --done-bg: #EEF5F1; --done-border: #BBDDC8;
+    --pend: #8B6B3A; --pend-bg: #F9F3EA; --pend-border: #E8D5B0;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+    --radius: 12px; --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.6; }
+
+  .loading-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; gap: 14px; }
+  .loading-overlay.hidden { display: none; }
+  .spinner { width: 32px; height: 32px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-size: 13px; color: var(--text3); }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--text); color: #fff; font-size: 13px; padding: 10px 20px; border-radius: 20px; transition: transform 0.3s ease; z-index: 998; white-space: nowrap; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 24px 32px 20px; position: sticky; top: 0; z-index: 100; }
+  .header-inner { max-width: 960px; margin: 0 auto; }
+  .title-block h1 { font-family: 'Noto Serif KR', serif; font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; margin-bottom: 3px; }
+  .title-block p { font-size: 12px; color: var(--text3); }
+  .sync-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--done); display: inline-block; }
+  .sync-dot.syncing { background: var(--pend); animation: pulse 1s ease-in-out infinite; }
+  .sync-dot.error { background: var(--sm); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .sync-status { font-size: 11px; color: var(--text3); }
+
+  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .s-card { flex: 1; min-width: 130px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 14px; }
+  .s-card.sw { background: var(--sw-bg); border-color: var(--sw-border); }
+  .s-card.sm { background: var(--sm-bg); border-color: var(--sm-border); }
+  .s-label { font-size: 11px; color: var(--text3); margin-bottom: 3px; letter-spacing: 0.03em; text-transform: uppercase; }
+  .s-val { font-size: 16px; font-weight: 500; color: var(--text); }
+  .s-card.sw .s-val { color: var(--sw); }
+  .s-card.sm .s-val { color: var(--sm); }
+  .s-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  .main { max-width: 960px; margin: 0 auto; padding: 24px 32px 48px; }
+
+  .tab-bar { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab { padding: 9px 14px; font-size: 13px; cursor: pointer; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color 0.15s; font-family: 'Noto Sans KR', sans-serif; }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { border-bottom: 1.5px solid var(--border2); }
+  thead th { text-align: left; padding: 8px 10px; font-weight: 500; color: var(--text3); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr.pend-row { opacity: 0.65; }
+  td { padding: 9px 10px; vertical-align: middle; }
+  .td-r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .td-c { text-align: center; }
+  .item-note { font-size: 11px; color: var(--text3); display: block; margin-top: 1px; }
+  .sw-amt { color: var(--sw); font-weight: 500; }
+  .sm-amt { color: var(--sm); font-weight: 500; }
+  .total-row td { font-weight: 500; border-top: 1.5px solid var(--border2) !important; background: var(--surface2); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; line-height: 1.6; white-space: nowrap; }
+  .b-sw { background: var(--sw-bg); color: var(--sw); border: 1px solid var(--sw-border); }
+  .b-sm { background: var(--sm-bg); color: var(--sm); border: 1px solid var(--sm-border); }
+  .b-both { background: var(--done-bg); color: var(--done); border: 1px solid var(--done-border); }
+  .b-done { background: var(--done-bg); color: var(--done); border: 1px solid var(--done-border); }
+  .b-pend { background: var(--pend-bg); color: var(--pend); border: 1px solid var(--pend-border); }
+  .cat-tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+  .btn-del { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 12px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; line-height: 1; }
+  .btn-del:hover { color: #8B3A3A; background: #F9EEEE; }
+
+  .result-box { margin-top: 20px; border-radius: var(--radius); padding: 18px 22px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 16px; }
+  .r-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; letter-spacing: 0.03em; text-transform: uppercase; }
+  .r-val { font-size: 15px; font-weight: 500; color: var(--text); }
+  .r-val.sw { color: var(--sw); }
+  .r-val.sm { color: var(--sm); }
+  .r-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  .add-form { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 22px; box-shadow: var(--shadow); }
+  .add-form-title { font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .form-full { margin-bottom: 10px; }
+  .f-label { font-size: 11px; color: var(--text3); display: block; margin-bottom: 4px; letter-spacing: 0.03em; text-transform: uppercase; }
+  input, select { width: 100%; padding: 8px 11px; font-size: 13px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; outline: none; transition: border-color 0.15s; }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn-primary { width: 100%; padding: 10px; font-size: 13px; font-weight: 500; border: none; border-radius: var(--radius-sm); background: var(--accent); color: #fff; cursor: pointer; font-family: 'Noto Sans KR', sans-serif; transition: background 0.15s; margin-top: 4px; }
+  .btn-primary:hover { background: #7A5F4F; }
+
+  .gift-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .g-card { flex: 1; min-width: 120px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; box-shadow: var(--shadow); }
+  .g-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .g-val { font-size: 16px; font-weight: 500; color: var(--text); }
+  .net-pos { color: var(--done); }
+  .net-neg { color: var(--sm); }
+
+  .todo-item { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .todo-item input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); padding: 0; border: none; background: none; }
+  .todo-item.done-todo .todo-text { text-decoration: line-through; color: var(--text3); }
+  .todo-cat-badge { font-size: 11px; color: var(--text3); margin-left: auto; white-space: nowrap; }
+  .todo-add { display: flex; gap: 8px; margin-top: 14px; }
+  .todo-add input { flex: 1; }
+  .todo-add select { width: 100px; }
+  .btn-sm { padding: 8px 16px; font-size: 13px; font-weight: 500; border: none; border-radius: var(--radius-sm); background: var(--accent); color: #fff; cursor: pointer; font-family: 'Noto Sans KR', sans-serif; transition: background 0.15s; white-space: nowrap; }
+  .btn-sm:hover { background: #7A5F4F; }
+  .section-label { font-size: 11px; color: var(--text3); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  @media (max-width: 600px) {
+    .header { padding: 18px 16px 16px; }
+    .main { padding: 16px 16px 40px; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Google Sheets에서 불러오는 중...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="title-block">
+      <h1>결혼 준비 비용 정산</h1>
+      <p>1€ = 1,730원 &nbsp;·&nbsp; 공동결제 5:5 &nbsp;·&nbsp; 승원 &amp; 선미</p>
+    </div>
+    <div class="sync-row">
+      <span class="sync-dot syncing" id="sync-dot"></span>
+      <span class="sync-status" id="sync-status">연결 중...</span>
+    </div>
+    <div class="summary">
+      <div class="s-card"><div class="s-label">총 지출</div><div class="s-val" id="c-total">-</div><div class="s-sub">전 항목 합산</div></div>
+      <div class="s-card sw"><div class="s-label">승원 부담</div><div class="s-val" id="c-sw">-</div><div class="s-sub">완료 + 미결제 포함</div></div>
+      <div class="s-card sm"><div class="s-label">선미 부담</div><div class="s-val" id="c-sm">-</div><div class="s-sub">완료 + 미결제 포함</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="tab-bar">
+    <div class="tab active" onclick="st('all')">전체</div>
+    <div class="tab" onclick="st('wed')">예식</div>
+    <div class="tab" onclick="st('cam')">촬영</div>
+    <div class="tab" onclick="st('hon')">신혼여행</div>
+    <div class="tab" onclick="st('tro')">혼수</div>
+    <div class="tab" onclick="st('gift')">축의금</div>
+    <div class="tab" onclick="st('todo')">TO-DO</div>
+  </div>
+
+  <div id="tab-all" class="tab-content active"><div class="table-wrap"><table><thead><tr><th>구분</th><th>항목</th><th class="td-r">금액</th><th class="td-c">결제</th><th class="td-c">상태</th><th class="td-r">승원</th><th class="td-r">선미</th><th></th></tr></thead><tbody id="tb-all"></tbody></table></div></div>
+  <div id="tab-wed" class="tab-content"><div class="table-wrap"><table><thead><tr><th>항목</th><th class="td-r">금액</th><th class="td-c">결제</th><th class="td-c">상태</th><th class="td-r">승원</th><th class="td-r">선미</th><th></th></tr></thead><tbody id="tb-wed"></tbody></table></div></div>
+  <div id="tab-cam" class="tab-content"><div class="table-wrap"><table><thead><tr><th>항목</th><th class="td-r">금액</th><th class="td-c">결제</th><th class="td-c">상태</th><th class="td-r">승원</th><th class="td-r">선미</th><th></th></tr></thead><tbody id="tb-cam"></tbody></table></div></div>
+  <div id="tab-hon" class="tab-content"><div class="table-wrap"><table><thead><tr><th>항목</th><th class="td-r">금액</th><th class="td-c">결제</th><th class="td-c">상태</th><th class="td-r">승원</th><th class="td-r">선미</th><th></th></tr></thead><tbody id="tb-hon"></tbody></table></div></div>
+  <div id="tab-tro" class="tab-content"><div class="table-wrap"><table><thead><tr><th>항목</th><th class="td-r">금액</th><th class="td-c">결제</th><th class="td-c">상태</th><th class="td-r">승원</th><th class="td-r">선미</th><th></th></tr></thead><tbody id="tb-tro"></tbody></table></div></div>
+
+  <div id="tab-gift" class="tab-content">
+    <div class="gift-summary">
+      <div class="g-card"><div class="g-label">총 축의금</div><div class="g-val" id="g-total">0원</div></div>
+      <div class="g-card"><div class="g-label">총 지출</div><div class="g-val" id="g-spent">-</div></div>
+      <div class="g-card"><div class="g-label">실질 부담</div><div class="g-val" id="g-net">-</div></div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>이름</th><th>관계</th><th class="td-r">금액</th><th></th></tr></thead><tbody id="tb-gift"></tbody></table></div>
+    <div class="add-form">
+      <div class="add-form-title">축의금 추가</div>
+      <div class="form-grid">
+        <div><label class="f-label">이름</label><input id="g-name" placeholder="홍길동"></div>
+        <div><label class="f-label">관계</label><input id="g-rel" placeholder="친구, 직장 등"></div>
+      </div>
+      <div class="form-full"><label class="f-label">금액 (원)</label><input id="g-amt" type="number" placeholder="100000"></div>
+      <button class="btn-primary" onclick="addGift()">추가</button>
+    </div>
+  </div>
+
+  <div id="tab-todo" class="tab-content">
+    <div id="todo-list"></div>
+    <div class="todo-add">
+      <input id="todo-input" placeholder="할 일 입력..." onkeydown="if(event.key==='Enter')addTodo()">
+      <select id="todo-cat"><option>예식</option><option>촬영</option><option>신혼여행</option><option>혼수</option><option>기타</option></select>
+      <button class="btn-sm" onclick="addTodo()">추가</button>
+    </div>
+  </div>
+
+  <div id="add-section">
+    <div class="add-form">
+      <div class="add-form-title">항목 추가</div>
+      <div class="form-grid">
+        <div><label class="f-label">구분</label><select id="in-cat"><option>예식</option><option>촬영</option><option>신혼여행</option><option>혼수</option></select></div>
+        <div><label class="f-label">항목명</label><input id="in-name" placeholder="항목 이름"></div>
+      </div>
+      <div class="form-grid">
+        <div><label class="f-label">금액 (원)</label><input id="in-amt" type="number" placeholder="100000"></div>
+        <div><label class="f-label">결제 주체</label><select id="in-pay"><option value="sw">승원</option><option value="sm">선미</option><option value="both">공동 (5:5)</option></select></div>
+      </div>
+      <div class="form-grid">
+        <div><label class="f-label">상태</label><select id="in-status"><option value="done">결제완료</option><option value="pend">미결제</option></select></div>
+        <div><label class="f-label">비고 (선택)</label><input id="in-note" placeholder="메모"></div>
+      </div>
+      <button class="btn-primary" onclick="addItem()">추가</button>
+    </div>
+  </div>
+
+  <div class="result-box" id="result-box">
+    <div class="result-grid">
+      <div><div class="r-label">총액 ÷ 2 (기준액)</div><div class="r-val" id="r-half">-</div></div>
+      <div><div class="r-label">승원 실제 부담</div><div class="r-val sw" id="r-sw">-</div></div>
+      <div><div class="r-label">선미 실제 부담</div><div class="r-val sm" id="r-sm">-</div></div>
+    </div>
+    <hr class="r-divider">
+    <div class="result-grid">
+      <div><div class="r-label">결제완료 합계</div><div class="r-val" id="r-done">-</div></div>
+      <div><div class="r-label">미결제 합계</div><div class="r-val" id="r-pend">-</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxd5K3Viq5n_DsWb-yDcig3kjBPvfxAH-CpbDxSSQpcl-oh6iXfTMdL16aw-b-sGG_JEQ/exec';
+const EUR = 1730;
+const f = n => n.toLocaleString('ko-KR') + '원';
+const fz = n => n === 0 ? '-' : f(n);
+const ev = v => Math.round(v * EUR);
+
+const DEFAULT_ITEMS = [
+  ['예식','클래식마켓 (예복)',1400000,'sw',1400000,0,'','done'],
+  ['예식','(주)이룸웨딩컨벤션 웨딩홀 계약금',2000000,'sw',2000000,0,'','done'],
+  ['예식','닥스넥타이 (상견례 선물)',120000,'sw',120000,0,'','done'],
+  ['예식','일마고 (승원 아빠 예복)',470000,'sw',470000,0,'','done'],
+  ['예식','헤어변형 예약금',50000,'sm',0,50000,'','done'],
+  ['예식','유어웨딩 플래너 계약금',400000,'sm',0,400000,'','done'],
+  ['예식','유어웨딩 플래너 잔금',1770000,'sm',0,1770000,'','done'],
+  ['예식','아크레도 (결혼반지)',3621000,'sm',0,3621000,'','done'],
+  ['예식','상견례 식비',400000,'both',300000,100000,'','done'],
+  ['예식','에밀리아 스타일 본식스냅 예약금',300000,'sm',0,300000,'','done'],
+  ['예식','어머니 두 분 한복',720000,'sm',0,720000,'','done'],
+  ['예식','테일러마고 (선미 아빠 예복)',460000,'sm',0,460000,'','done'],
+  ['예식','선미 아빠 구두',118000,'sm',0,118000,'','done'],
+  ['예식','오브하우스 아이폰스냅 계약금',100000,'sm',0,100000,'','done'],
+  ['예식','모바일 청첩장',13900,'sm',0,13900,'','done'],
+  ['예식','헤어변형 잔금',50000,'both',25000,25000,'9/13','pend'],
+  ['예식','에밀리아 스타일 본식스냅 잔금',400000,'both',200000,200000,'9/13','pend'],
+  ['예식','오브하우스 아이폰스냅 잔금',220000,'both',110000,110000,'9/13','pend'],
+  ['예식','헬퍼',250000,'both',125000,125000,'','pend'],
+  ['예식','친구 축가/축사',500000,'both',250000,250000,'','pend'],
+  ['예식','부케',250000,'both',125000,125000,'','pend'],
+  ['예식','식대',12000000,'both',6000000,6000000,'','pend'],
+  ['예식','어머니 두 분 메이크업',420000,'both',210000,210000,'','pend'],
+  ['촬영','이수연 피크닉플라워 (꽃/플라워 데코)',360000,'sw',360000,0,'','done'],
+  ['촬영','(주)노마 스튜디오 촬영 선금',2000000,'sw',2000000,0,'','done'],
+  ['촬영','(주)노마 스튜디오 촬영 잔금',1800000,'sw',1800000,0,'','done'],
+  ['혼수','알레르망 (침구/혼수)',594000,'sw',594000,0,'','done'],
+  ['신혼여행','아시아나 (인천→바르셀로나)',2120600,'sw',2120600,0,'','done'],
+  ['신혼여행','피쿤스냅 바르셀로나 스냅 계약금',200000,'sm',0,200000,'','done'],
+  ['신혼여행','라이언에어 FR2495 (BCN→PMI)',252955,'sm',0,252955,'','done'],
+  ['신혼여행','대한항공 (리스본→인천)',3518200,'sm',0,3518200,'','done'],
+  ['신혼여행','H10 메트로폴리탄 2박',805246,'sm',0,805246,'','done'],
+  ['신혼여행','포르투 에어비앤비 3박',1237539,'sm',0,1237539,'','done'],
+  ['신혼여행','가우디 투어 (MC투어)',117786,'sm',0,117786,'','done'],
+  ['신혼여행','라이언에어 FR6751 (PMI→OPO)',423967,'sm',0,423967,'','done'],
+  ['신혼여행','Hyatt Regency Barcelona 1박',ev(146),'both',Math.round(ev(146)/2),ev(146)-Math.round(ev(146)/2),'€146 현장','pend'],
+  ['신혼여행','Fontsanta Hotel & Spa 2박',ev(983),'both',Math.round(ev(983)/2),ev(983)-Math.round(ev(983)/2),'€983 현장','pend'],
+  ['신혼여행','Hotel Antigua Palma 1박',ev(396.9),'both',Math.round(ev(396.9)/2),ev(396.9)-Math.round(ev(396.9)/2),'€396.90 현장','pend'],
+  ['신혼여행','Sa Tanqueta De Fornalutx 2박',ev(1167.54),'both',Math.round(ev(1167.54)/2),ev(1167.54)-Math.round(ev(1167.54)/2),'€1,167.54 아고다 후불','pend'],
+  ['신혼여행','Locke de Santa Joana 2박',ev(347),'both',Math.round(ev(347)/2),ev(347)-Math.round(ev(347)/2),'€347 트래블월렛','pend'],
+  ['신혼여행','피쿤스냅 잔금',250000,'both',125000,125000,'현장','pend'],
+];
+const DEFAULT_TODOS = [
+  {text:'웨딩홀 잔금 납부', cat:'예식', done:false},
+  {text:'본식 당일 타임라인 확인', cat:'예식', done:false},
+  {text:'신혼여행 짐 싸기', cat:'신혼여행', done:false},
+  {text:'여권 유효기간 확인', cat:'신혼여행', done:false},
+];
+
+let items = [], gifts = [], todos = [];
+
+// JSONP 호출 (CORS 우회)
+function jsonp(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      reject(new Error('timeout'));
+    }, 10000);
+    window[cbName] = (data) => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      resolve(data);
+    };
+    const query = Object.entries({...params, callback: cbName})
+      .map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    const script = document.createElement('script');
+    script.src = GAS_URL + '?' + query;
+    script.onerror = () => { clearTimeout(timeout); delete window[cbName]; reject(new Error('script error')); };
+    document.head.appendChild(script);
+    setTimeout(() => { try { document.head.removeChild(script); } catch(e){} }, 15000);
+  });
+}
+
+async function loadFromSheets() {
+  setSyncState('syncing', '불러오는 중...');
+  try {
+    const data = await jsonp({action:'getAll'});
+    if (data.error) throw new Error(data.error);
+
+    if (data.items && data.items.length > 0) {
+      items = data.items.map(r => [String(r[0]||''), String(r[1]||''), Number(r[2]||0), String(r[3]||'sw'), Number(r[4]||0), Number(r[5]||0), String(r[6]||''), String(r[7]||'done')]);
+    } else {
+      items = DEFAULT_ITEMS.map(r => [...r]);
+      await saveItems();
+    }
+    gifts = data.gifts && data.gifts.length > 0 ? data.gifts.map(r => ({name:String(r[0]||''), rel:String(r[1]||''), amt:Number(r[2]||0)})) : [];
+    if (data.todos && data.todos.length > 0) {
+      todos = data.todos.map(r => ({text:String(r[0]||''), cat:String(r[1]||'기타'), done: r[2]==='TRUE'||r[2]===true||r[2]==='true'}));
+    } else {
+      todos = DEFAULT_TODOS.map(t => ({...t}));
+      await saveTodos();
+    }
+    setSyncState('ok', '동기화됨');
+  } catch(e) {
+    console.error(e);
+    setSyncState('error', '연결 실패 — 오프라인 모드');
+    items = DEFAULT_ITEMS.map(r => [...r]);
+    gifts = [];
+    todos = DEFAULT_TODOS.map(t => ({...t}));
+  }
+  document.getElementById('loading').classList.add('hidden');
+  renderAll(); renderGifts(); renderTodos();
+}
+
+async function saveItems() {
+  try { setSyncState('syncing','저장 중...'); await jsonp({action:'saveItems', data:JSON.stringify(items)}); setSyncState('ok','저장됨'); }
+  catch(e) { setSyncState('error','저장 실패'); }
+}
+async function saveGifts() {
+  try { setSyncState('syncing','저장 중...'); await jsonp({action:'saveGifts', data:JSON.stringify(gifts.map(g=>[g.name,g.rel,g.amt]))}); setSyncState('ok','저장됨'); }
+  catch(e) { setSyncState('error','저장 실패'); }
+}
+async function saveTodos() {
+  try { setSyncState('syncing','저장 중...'); await jsonp({action:'saveTodos', data:JSON.stringify(todos.map(t=>[t.text,t.cat,t.done]))}); setSyncState('ok','저장됨'); }
+  catch(e) { setSyncState('error','저장 실패'); }
+}
+
+function setSyncState(state, msg) {
+  const dot = document.getElementById('sync-dot');
+  dot.className = 'sync-dot' + (state !== 'ok' ? ' '+state : '');
+  document.getElementById('sync-status').textContent = msg;
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function payBadge(p) {
+  if(p==='sw') return '<span class="badge b-sw">승원</span>';
+  if(p==='sm') return '<span class="badge b-sm">선미</span>';
+  return '<span class="badge b-both">공동</span>';
+}
+function statusBadge(s) {
+  return s==='done' ? '<span class="badge b-done">완료</span>' : '<span class="badge b-pend">미결제</span>';
+}
+
+function render(id, data, showCat) {
+  const tb = document.getElementById(id); if(!tb) return;
+  let swT=0, smT=0, tot=0;
+  const sorted = [...data.filter(d=>d[7]==='done'), ...data.filter(d=>d[7]==='pend')];
+  tb.innerHTML = sorted.map(d => {
+    const [cat,name,amt,pay,sw,sm,note,status] = d;
+    swT+=Number(sw); smT+=Number(sm); tot+=Number(amt);
+    const idx = items.indexOf(d);
+    const cc = showCat ? `<td><span class="cat-tag">${cat}</span></td>` : '';
+    const nn = note ? `<span class="item-note">${note}</span>` : '';
+    const rc = status==='pend' ? ' class="pend-row"' : '';
+    return `<tr${rc}>${cc}<td>${name}${nn}</td><td class="td-r">${f(Number(amt))}</td><td class="td-c">${payBadge(pay)}</td><td class="td-c">${statusBadge(status)}</td><td class="td-r sw-amt">${fz(Number(sw))}</td><td class="td-r sm-amt">${fz(Number(sm))}</td><td><button class="btn-del" onclick="delItem(${idx})">✕</button></td></tr>`;
+  }).join('');
+  const sp = showCat ? ' colspan="2"' : '';
+  tb.innerHTML += `<tr class="total-row"><td${sp}>합계</td><td class="td-r">${f(tot)}</td><td></td><td></td><td class="td-r sw-amt">${f(swT)}</td><td class="td-r sm-amt">${f(smT)}</td><td></td></tr>`;
+}
+
+function renderAll() {
+  render('tb-all', items, true);
+  render('tb-wed', items.filter(i=>i[0]==='예식'), false);
+  render('tb-cam', items.filter(i=>i[0]==='촬영'), false);
+  render('tb-hon', items.filter(i=>i[0]==='신혼여행'), false);
+  render('tb-tro', items.filter(i=>i[0]==='혼수'), false);
+  updateSummary();
+}
+
+function updateSummary() {
+  const swT = items.reduce((a,b)=>a+Number(b[4]),0);
+  const smT = items.reduce((a,b)=>a+Number(b[5]),0);
+  const grand = items.reduce((a,b)=>a+Number(b[2]),0);
+  document.getElementById('c-total').textContent = f(grand);
+  document.getElementById('c-sw').textContent = f(swT);
+  document.getElementById('c-sm').textContent = f(smT);
+  document.getElementById('r-half').textContent = f(Math.round(grand/2));
+  document.getElementById('r-sw').textContent = f(swT);
+  document.getElementById('r-sm').textContent = f(smT);
+  document.getElementById('r-done').textContent = f(items.filter(i=>i[7]==='done').reduce((a,b)=>a+Number(b[2]),0));
+  document.getElementById('r-pend').textContent = f(items.filter(i=>i[7]==='pend').reduce((a,b)=>a+Number(b[2]),0));
+  const gTotal = gifts.reduce((a,b)=>a+b.amt,0);
+  document.getElementById('g-total').textContent = f(gTotal);
+  document.getElementById('g-spent').textContent = f(grand);
+  const net = grand - gTotal;
+  const el = document.getElementById('g-net');
+  el.textContent = f(Math.abs(net));
+  el.className = 'g-val ' + (net <= 0 ? 'net-pos' : 'net-neg');
+}
+
+async function addItem() {
+  const name = document.getElementById('in-name').value.trim();
+  const amt = parseInt(document.getElementById('in-amt').value)||0;
+  if(!name||!amt){ showToast('항목명과 금액을 입력해주세요'); return; }
+  const cat = document.getElementById('in-cat').value;
+  const pay = document.getElementById('in-pay').value;
+  const status = document.getElementById('in-status').value;
+  const note = document.getElementById('in-note').value.trim();
+  let sw=0,sm=0;
+  if(pay==='sw') sw=amt; else if(pay==='sm') sm=amt; else { sw=Math.round(amt/2); sm=amt-sw; }
+  items.push([cat,name,amt,pay,sw,sm,note,status]);
+  document.getElementById('in-name').value='';
+  document.getElementById('in-amt').value='';
+  document.getElementById('in-note').value='';
+  renderAll(); await saveItems(); showToast('항목이 추가됐어요');
+}
+
+async function delItem(idx) {
+  if(!confirm('이 항목을 삭제할까요?')) return;
+  items.splice(idx,1); renderAll(); await saveItems(); showToast('삭제됐어요');
+}
+
+async function addGift() {
+  const name = document.getElementById('g-name').value.trim();
+  const rel = document.getElementById('g-rel').value.trim();
+  const amt = parseInt(document.getElementById('g-amt').value)||0;
+  if(!name||!amt){ showToast('이름과 금액을 입력해주세요'); return; }
+  gifts.push({name,rel,amt});
+  document.getElementById('g-name').value='';
+  document.getElementById('g-rel').value='';
+  document.getElementById('g-amt').value='';
+  renderGifts(); updateSummary(); await saveGifts(); showToast('축의금이 추가됐어요');
+}
+async function delGift(i) {
+  gifts.splice(i,1); renderGifts(); updateSummary(); await saveGifts(); showToast('삭제됐어요');
+}
+function renderGifts() {
+  const tb = document.getElementById('tb-gift');
+  if(!gifts.length){ tb.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:24px 0;font-size:13px;">아직 입력된 축의금이 없어요</td></tr>'; return; }
+  let tot=0;
+  tb.innerHTML = gifts.map((g,i)=>{ tot+=g.amt; return `<tr><td>${g.name}</td><td style="color:var(--text3)">${g.rel}</td><td class="td-r">${f(g.amt)}</td><td><button class="btn-del" onclick="delGift(${i})">✕</button></td></tr>`; }).join('');
+  tb.innerHTML += `<tr class="total-row"><td colspan="2">합계</td><td class="td-r">${f(tot)}</td><td></td></tr>`;
+}
+
+async function addTodo() {
+  const text = document.getElementById('todo-input').value.trim(); if(!text) return;
+  todos.push({text, cat: document.getElementById('todo-cat').value, done:false});
+  document.getElementById('todo-input').value='';
+  renderTodos(); await saveTodos(); showToast('할 일이 추가됐어요');
+}
+async function toggleTodo(i) { todos[i].done=!todos[i].done; renderTodos(); await saveTodos(); }
+async function delTodo(i) { todos.splice(i,1); renderTodos(); await saveTodos(); showToast('삭제됐어요'); }
+function renderTodos() {
+  const el = document.getElementById('todo-list');
+  const undone = todos.filter(t=>!t.done), done = todos.filter(t=>t.done);
+  const row = t => { const idx=todos.indexOf(t); return `<div class="todo-item${t.done?' done-todo':''}"><input type="checkbox" ${t.done?'checked':''} onchange="toggleTodo(${idx})"><span class="todo-text">${t.text}</span><span class="todo-cat-badge">${t.cat}</span><button class="btn-del" onclick="delTodo(${idx})">✕</button></div>`; };
+  el.innerHTML = undone.map(row).join('') + (done.length ? `<div class="section-label">완료</div>`+done.map(row).join('') : '');
+}
+
+function st(name) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelector(`.tab[onclick="st('${name}')"]`).classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  const isSettlement = ['all','wed','cam','hon','tro'].includes(name);
+  document.getElementById('add-section').style.display = isSettlement ? 'block' : 'none';
+  document.getElementById('result-box').style.display = isSettlement ? 'block' : 'none';
+}
+
+loadFromSheets();
+</script>
+</body>
+</html>
